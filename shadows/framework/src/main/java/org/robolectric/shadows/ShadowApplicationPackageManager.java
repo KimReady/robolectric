@@ -1759,7 +1759,6 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
   public String getSystemTextClassifierPackageName() {
     return "";
   }
-
   @Implementation(minSdk = P)
   @HiddenApi
   protected String[] setPackagesSuspended(
@@ -1768,6 +1767,34 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
       PersistableBundle appExtras,
       PersistableBundle launcherExtras,
       String dialogMessage) {
+    return setPackagesSuspended(
+        packageNames, suspended, appExtras, launcherExtras, dialogMessage, /* dialogInfo= */ null);
+  }
+
+  @Implementation(minSdk = Q)
+  @HiddenApi
+  protected /* String[] */ Object setPackagesSuspended(
+      /* String[] */ Object packageNames,
+      /* boolean */ Object suspended,
+      /* PersistableBundle */ Object appExtras,
+      /* PersistableBundle */ Object launcherExtras,
+      /* SuspendDialogInfo */ Object dialogInfo) {
+    return setPackagesSuspended(
+        (String[]) packageNames,
+        (boolean) suspended,
+        (PersistableBundle) appExtras,
+        (PersistableBundle) launcherExtras,
+        /* dialogMessage= */ null,
+        dialogInfo);
+  }
+
+  private String[] setPackagesSuspended(
+      String[] packageNames,
+      boolean suspended,
+      PersistableBundle appExtras,
+      PersistableBundle launcherExtras,
+      String dialogMessage,
+      Object dialogInfo) {
     if (hasProfileOwnerOrDeviceOwnerOnCurrentUser()) {
       throw new UnsupportedOperationException();
     }
@@ -1782,7 +1809,7 @@ public class ShadowApplicationPackageManager extends ShadowPackageManager {
         unupdatedPackages.add(packageName);
         continue;
       }
-      setting.setSuspended(suspended, dialogMessage, appExtras, launcherExtras);
+      setting.setSuspended(suspended, dialogMessage, dialogInfo, appExtras, launcherExtras);
     }
     return unupdatedPackages.toArray(new String[0]);
   }

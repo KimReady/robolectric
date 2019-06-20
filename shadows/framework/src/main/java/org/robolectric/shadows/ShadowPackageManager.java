@@ -32,6 +32,8 @@ import static java.util.Arrays.asList;
 import static org.robolectric.util.reflector.Reflector.reflector;
 
 import android.Manifest;
+import android.annotation.DrawableRes;
+import android.annotation.StringRes;
 import android.annotation.UserIdInt;
 import android.content.ComponentName;
 import android.content.Context;
@@ -87,6 +89,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -99,6 +102,7 @@ import org.robolectric.annotation.RealObject;
 import org.robolectric.annotation.Resetter;
 import org.robolectric.shadow.api.Shadow;
 import org.robolectric.shadows.ShadowPackageParser._PackageParser_;
+import org.robolectric.util.ReflectionHelpers;
 
 @SuppressWarnings("NewApi")
 @Implements(PackageManager.class)
@@ -439,6 +443,12 @@ public class ShadowPackageManager {
     /** The message to be displayed to the user when they try to launch the app. */
     private String dialogMessage = null;
 
+    /**
+     * The info for how to display the dialog that shows to the user when they try to launch the
+     * app. On Q, one of this field or dialogMessage will be present when a package is suspended.
+     */
+    private Object dialogInfo = null;
+
     /** An optional {@link PersistableBundle} shared with the app. */
     private PersistableBundle suspendedAppExtras = null;
 
@@ -450,6 +460,7 @@ public class ShadowPackageManager {
     public PackageSetting(PackageSetting that) {
       this.suspended = that.suspended;
       this.dialogMessage = that.dialogMessage;
+      this.dialogInfo = that.dialogInfo;
       this.suspendedAppExtras = deepCopyNullablePersistableBundle(that.suspendedAppExtras);
       this.suspendedLauncherExtras =
           deepCopyNullablePersistableBundle(that.suspendedLauncherExtras);
@@ -458,16 +469,19 @@ public class ShadowPackageManager {
     /**
      * Sets the suspension state of the package.
      *
-     * If {@code suspended} is false, {@code dialogMessage}, {@code appExtras}, and {@code
+     * <p>If {@code suspended} is false, {@code dialogInfo}, {@code appExtras}, and {@code
      * launcherExtras} will be ignored.
      */
     void setSuspended(
         boolean suspended,
         String dialogMessage,
+        /* SuspendDialogInfo */ Object dialogInfo,
         PersistableBundle appExtras,
         PersistableBundle launcherExtras) {
+      Preconditions.checkArgument(dialogMessage == null || dialogInfo == null);
       this.suspended = suspended;
       this.dialogMessage = suspended ? dialogMessage : null;
+      this.dialogInfo = suspended ? dialogInfo : null;
       this.suspendedAppExtras = suspended ? deepCopyNullablePersistableBundle(appExtras) : null;
       this.suspendedLauncherExtras =
           suspended ? deepCopyNullablePersistableBundle(launcherExtras) : null;
@@ -481,6 +495,10 @@ public class ShadowPackageManager {
       return dialogMessage;
     }
 
+    public SuspendDialogInfo getDialogInfo() {
+      return new SuspendDialogInfo(dialogInfo);
+    }
+
     public PersistableBundle getSuspendedAppExtras() {
       return suspendedAppExtras;
     }
@@ -491,6 +509,101 @@ public class ShadowPackageManager {
 
     private static PersistableBundle deepCopyNullablePersistableBundle(PersistableBundle bundle) {
       return bundle == null ? null : bundle.deepCopy();
+    }
+
+    /** Wrapper around {@link android.content.pm.SuspendDialogInfo} to expose the values */
+    public final class SuspendDialogInfo {
+
+      private final int iconResId;
+      private final int titleResId;
+      private final int dialogMessageResId;
+      private final String dialogMessage;
+      private final int neutralButtonTextResId;
+
+      SuspendDialogInfo(Object realObject) {
+        this(
+            ReflectionHelpers.callInstanceMethod(realObject, "getIconResId"),
+            ReflectionHelpers.callInstanceMethod(realObject, "getTitleResId"),
+            ReflectionHelpers.callInstanceMethod(realObject, "getDialogMessageResId"),
+            ReflectionHelpers.callInstanceMethod(realObject, "getDialogMessage"),
+            ReflectionHelpers.callInstanceMethod(realObject, "getNeutralButtonTextResId"));
+      }
+
+      SuspendDialogInfo(
+          int iconResId,
+          int titleResId,
+          int dialogMessageResId,
+          String dialogMessage,
+          int neutralButtonTextResId) {
+        this.iconResId = iconResId;
+        this.titleResId = titleResId;
+        this.dialogMessageResId = dialogMessageResId;
+        this.dialogMessage = dialogMessage;
+        this.neutralButtonTextResId = neutralButtonTextResId;
+      }
+
+      /** @return the resource id of the icon to be used with the dialog */
+      @DrawableRes
+      public int getIconResId() {
+        return iconResId;
+      }
+
+      /** @return the resource id of the title to be used with the dialog */
+      @StringRes
+      public int getTitleResId() {
+        return titleResId;
+      }
+
+      /** @return the resource id of the text to be shown in the dialog's body */
+      @StringRes
+      public int getDialogMessageResId() {
+        return dialogMessageResId;
+      }
+
+      /**
+       * @return the text to be shown in the dialog's body. Returns {@code null} if {@link
+       *     #getDialogMessageResId()} returns a valid resource id.
+       */
+      @Nullable
+      public String getDialogMessage() {
+        return dialogMessage;
+      }
+
+      /** @return the text to be shown */
+      @StringRes
+      public int getNeutralButtonTextResId() {
+        return neutralButtonTextResId;
+      }
+
+      @Override
+      public boolean equals(Object o) {
+        if (this == o) {
+          return true;
+        }
+        if (o == null) {
+          return false;
+        }
+
+        SuspendDialogInfo that;
+        if (o instanceof SuspendDialogInfo) {
+          that = (SuspendDialogInfo) o;
+        } else if ("android.content.pm.SuspendDialogInfo".equals(o.getClass().getCanonicalName())) {
+          that = new SuspendDialogInfo(o);
+        } else {
+          return false;
+        }
+        return iconResId == that.iconResId
+            && titleResId == that.titleResId
+            && dialogMessageResId == that.dialogMessageResId
+            && neutralButtonTextResId == that.neutralButtonTextResId
+            && Objects.equals(dialogMessage, that.dialogMessage);
+      }
+
+      @Override
+      public int hashCode() {
+        return Objects.hash(
+            iconResId, titleResId, dialogMessageResId, dialogMessage, neutralButtonTextResId);
+      }
     }
   }
 
