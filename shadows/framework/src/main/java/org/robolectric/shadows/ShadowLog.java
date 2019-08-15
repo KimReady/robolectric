@@ -39,7 +39,7 @@ public class ShadowLog {
 
   @Implementation
   protected static int e(String tag, String msg, Throwable throwable) {
-    return addLog(Log.ERROR, tag, msg, throwable);
+    return printAndAddLog(Log.ERROR, tag, msg, throwable);
   }
 
   @Implementation
@@ -49,7 +49,7 @@ public class ShadowLog {
 
   @Implementation
   protected static int d(String tag, String msg, Throwable throwable) {
-    return addLog(Log.DEBUG, tag, msg, throwable);
+    return printAndAddLog(Log.DEBUG, tag, msg, throwable);
   }
 
   @Implementation
@@ -59,7 +59,7 @@ public class ShadowLog {
 
   @Implementation
   protected static int i(String tag, String msg, Throwable throwable) {
-    return addLog(Log.INFO, tag, msg, throwable);
+    return printAndAddLog(Log.INFO, tag, msg, throwable);
   }
 
   @Implementation
@@ -69,7 +69,7 @@ public class ShadowLog {
 
   @Implementation
   protected static int v(String tag, String msg, Throwable throwable) {
-    return addLog(Log.VERBOSE, tag, msg, throwable);
+    return printAndAddLog(Log.VERBOSE, tag, msg, throwable);
   }
 
   @Implementation
@@ -84,7 +84,7 @@ public class ShadowLog {
 
   @Implementation
   protected static int w(String tag, String msg, Throwable throwable) {
-    return addLog(Log.WARN, tag, msg, throwable);
+    return printAndAddLog(Log.WARN, tag, msg, throwable);
   }
 
   @Implementation
@@ -94,7 +94,7 @@ public class ShadowLog {
 
   @Implementation
   protected static int wtf(String tag, String msg, Throwable throwable) {
-    addLog(Log.ASSERT, tag, msg, throwable);
+    printAndAddLog(Log.ASSERT, tag, msg, throwable);
     if (wtfIsFatal) {
       throw new TerribleFailure(msg, throwable);
     }
@@ -104,6 +104,10 @@ public class ShadowLog {
   /** Sets whether calling {@link Log#wtf} will throw {@link TerribleFailure}. */
   public static void setWtfIsFatal(boolean fatal) {
     wtfIsFatal = fatal;
+  }
+
+  public static boolean getWtfIsFatal() {
+    return wtfIsFatal;
   }
 
   @Implementation
@@ -118,7 +122,7 @@ public class ShadowLog {
 
   @Implementation
   protected static int println_native(int bufID, int priority, String tag, String msg) {
-    addLog(priority, tag, msg, null);
+    printAndAddLog(priority, tag, msg, null);
     int tagLength = tag == null ? 0 : tag.length();
     int msgLength = msg == null ? 0 : msg.length();
     return extraLogLength + tagLength + msgLength;
@@ -133,11 +137,13 @@ public class ShadowLog {
     tagToLevel.put(tag, level);
   }
 
-  private static int addLog(int level, String tag, String msg, Throwable throwable) {
+  protected static void printLog(int level, String tag, String msg, Throwable throwable) {
     if (stream != null) {
       logToStream(stream, level, tag, msg, throwable);
     }
+  }
 
+  protected static void addLog(int level, String tag, String msg, Throwable throwable) {
     LogItem item = new LogItem(level, tag, msg, throwable);
     Queue<LogItem> itemList;
 
@@ -152,11 +158,15 @@ public class ShadowLog {
 
     itemList.add(item);
     logs.add(item);
+  }
 
+  private static int printAndAddLog(int level, String tag, String msg, Throwable throwable) {
+    printLog(level, tag, msg, throwable);
+    addLog(level, tag, msg, throwable);
     return 0;
   }
 
-  private static void logToStream(PrintStream ps, int level, String tag, String msg, Throwable throwable) {
+  protected static char levelToChar(int level) {
     final char c;
     switch (level) {
       case Log.ASSERT: c = 'A'; break;
@@ -167,7 +177,12 @@ public class ShadowLog {
       case Log.VERBOSE:c = 'V'; break;
       default:         c = '?';
     }
-    ps.println(c + "/" + tag + ": " + msg);
+    return c;
+  }
+
+  private static void logToStream(
+      PrintStream ps, int level, String tag, String msg, Throwable throwable) {
+    ps.println(levelToChar(level) + "/" + tag + ": " + msg);
     if (throwable != null) {
       throwable.printStackTrace(ps);
     }
@@ -250,7 +265,9 @@ public class ShadowLog {
     @Override
     public boolean equals(Object o) {
       if (this == o) return true;
-      if (o == null || getClass() != o.getClass()) return false;
+      if (!(o instanceof LogItem)) {
+        return false;
+      }
 
       LogItem log = (LogItem) o;
       return type == log.type
